@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tactiq Scraper Test</title>
+  <!-- Simulate Tactiq's meta tag for detection -->
+  <meta id="tactiq-rtc" name="tactiq-rtc" version="undefined" />
+</head>
+<body style="background: #1a1a1a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px;">
+  <h2>Tactiq Scraper Test Harness</h2>
+  <p id="status">Status: waiting...</p>
+  <div id="results" style="margin-top: 10px; font-size: 14px; color: #aaa;"></div>
+
+  <!-- Simulate Tactiq's transcript panel -->
+  <div id="tactiq-panel" style="
+    width: 320px;
+    height: 400px;
+    background: #212225;
+    border-radius: 8px;
+    margin-top: 20px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  ">
+    <!-- Tab bar (matches real Tactiq) -->
+    <div class="p-2" style="padding: 8px;">
+      <div class="max-w-full rounded-[10px] p-[1px]">
+        <div class="rounded-[10px] bg-[#18181B] p-1" style="background: #18181B; border-radius: 10px; padding: 4px;">
+          <div class="flex gap-0.5" style="display: flex; gap: 2px;">
+            <div style="padding: 6px 12px; font-size: 14px; color: #fff; background: #333; border-radius: 8px;">Live Transcript</div>
+            <div class="relative" style="padding: 6px 12px; font-size: 14px; color: #888;">Ask Tactiq AI</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scrollable transcript container (this is what the scraper observes) -->
+    <div id="transcript-container" class="relative box-border flex select-text flex-col overflow-y-auto" style="
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+    ">
+      <!-- Entries will be injected here -->
+    </div>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <button id="add-entry" style="padding: 8px 16px; cursor: pointer;">Add Entry</button>
+    <button id="update-last" style="padding: 8px 16px; cursor: pointer;">Update Last Entry (in-place)</button>
+    <button id="add-multi-speaker" style="padding: 8px 16px; cursor: pointer;">Add Multi-Speaker Burst</button>
+  </div>
+
+  <script type="module">
+    // ---- Inline a minimal version of the scraper for testing ----
+    // In real extension, this runs as content script. Here we test the parsing logic.
+
+    const container = document.getElementById('transcript-container');
+    const status = document.getElementById('status');
+    const results = document.getElementById('results');
+    let entryCount = 0;
+    const segments = [];
+
+    const SPEAKERS = ['Chris Cardinal', 'Dan Hang', 'Sarah Chen'];
+    const TEXTS = [
+      'Testing one, two, three.',
+      "Tell me about a time you scaled a product team while maintaining velocity.",
+      'Great question. At Rezilient, I inherited a team of 4 and needed to scale rapidly.',
+      "What was the outcome of that scaling effort?",
+      'We went from 4 to 12 engineers in 6 months. Feature velocity actually increased 3x.',
+      "That's impressive. How did you handle the cultural challenges?",
+      'I focused on three things: clear values, consistent rituals, and psychological safety.',
+    ];
+
+    function createTactiqEntry(speaker, text) {
+      const entry = document.createElement('div');
+      entry.className = 'flex flex-col px-2.5 py-0';
+      entry.style.cssText = 'display: flex; flex-direction: column; padding: 0 10px;';
+      entry.innerHTML = `
+        <div class="pt-2.5 pr-0 pb-0 pl-2.5 text-[#6dcc6d]" style="padding: 10px 0 0 10px; color: #6dcc6d; font-size: 14px; font-weight: 600;">
+          ${speaker}
+        </div>
+        <div class="group flex flex-row justify-between text-[#dcddde] p-1.5 mt-[3px] relative cursor-pointer" style="display: flex; flex-direction: row; justify-content: space-between; color: #dcddde; padding: 6px; margin-top: 3px; position: relative;">
+          <div class="flex-1 break-words break-all p-1 font-medium text-inherit" style="flex: 1; word-break: break-all; padding: 4px; font-weight: 500;">
+            ${text}
+          </div>
+          <div style="display: flex; gap: 2px; opacity: 0; font-size: 12px;">🎯✅❓💡⚙️</div>
+        </div>
+      `;
+      return entry;
+    }
+
+    document.getElementById('add-entry').addEventListener('click', () => {
+      const speaker = SPEAKERS[entryCount % SPEAKERS.length];
+      const text = TEXTS[entryCount % TEXTS.length];
+      container.appendChild(createTactiqEntry(speaker, text));
+      entryCount++;
+    });
+
+    document.getElementById('update-last').addEventListener('click', () => {
+      const entries = container.querySelectorAll('div[class*="flex"][class*="flex-col"][class*="px-"]');
+      if (entries.length === 0) return;
+      const last = entries[entries.length - 1];
+      const textEl = last.querySelector('div[class*="flex-1"][class*="break-words"]');
+      if (textEl) {
+        textEl.textContent = textEl.textContent + ' And we maintained quality throughout.';
+      }
+    });
+
+    document.getElementById('add-multi-speaker').addEventListener('click', () => {
+      for (let i = 0; i < 3; i++) {
+        const speaker = SPEAKERS[i];
+        const text = TEXTS[(entryCount + i) % TEXTS.length];
+        container.appendChild(createTactiqEntry(speaker, text));
+      }
+      entryCount += 3;
+    });
+
+    // ---- Now test the scraper logic ----
+    // We'll import it dynamically or simulate the observer
+
+    // Expose state for Playwright to inspect
+    window.__TEST_STATE = { segments, container };
+
+    // MutationObserver to simulate what the scraper does
+    const seenTexts = new Map();
+
+    function parseEntry(el) {
+      const speakerEl = el.querySelector('div[class*="text-[#6dcc6d]"]');
+      const textEl = el.querySelector('div[class*="flex-1"][class*="break-words"]');
+      if (speakerEl && textEl) {
+        const speaker = speakerEl.textContent?.trim();
+        const text = textEl.textContent?.trim();
+        if (speaker && text) {
+          const index = Array.from(el.parentElement?.children || []).indexOf(el);
+          return { speaker, text, index };
+        }
+      }
+      return null;
+    }
+
+    function processEntries() {
+      const entries = container.querySelectorAll('div[class*="flex"][class*="flex-col"][class*="px-"]');
+      for (const entry of entries) {
+        const parsed = parseEntry(entry);
+        if (!parsed) continue;
+
+        const key = `${parsed.index}`;
+        const existing = seenTexts.get(key);
+        if (existing === parsed.text) continue;
+
+        seenTexts.set(key, parsed.text);
+        segments.push({
+          speaker: parsed.speaker,
+          text: parsed.text,
+          index: parsed.index,
+          timestamp: Date.now(),
+        });
+      }
+      status.textContent = `Status: ${segments.length} segments captured`;
+      results.innerHTML = segments.map((s, i) =>
+        `<div style="margin: 4px 0;"><strong style="color: #6dcc6d;">${s.speaker}:</strong> ${s.text}</div>`
+      ).join('');
+    }
+
+    const observer = new MutationObserver(() => processEntries());
+    observer.observe(container, { childList: true, subtree: true, characterData: true });
+
+    status.textContent = 'Status: ready — click buttons to simulate Tactiq entries';
+  </script>
+</body>
+</html>

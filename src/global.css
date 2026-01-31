@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Suggestion markdown styles */
+.suggestion-md p { margin: 0.25rem 0; }
+.suggestion-md p:first-child { margin-top: 0; }
+.suggestion-md p:last-child { margin-bottom: 0; }
+.suggestion-md strong { color: #e5e7eb; font-weight: 600; }
+.suggestion-md ul, .suggestion-md ol { margin: 0.25rem 0; padding-left: 1.25rem; }
+.suggestion-md li { margin: 0.1rem 0; }
+.suggestion-md li::marker { color: #6b7280; }
+.suggestion-md h1, .suggestion-md h2, .suggestion-md h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #d1d5db;
+  margin: 0.5rem 0 0.25rem;
+}
+.suggestion-md h1:first-child, .suggestion-md h2:first-child, .suggestion-md h3:first-child {
+  margin-top: 0;
+}
+.suggestion-md code {
+  background: rgba(255,255,255,0.06);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+}
