@@ -16,6 +16,7 @@ export class DeepgramClient {
   }
 
   connect() {
+    // MediaRecorder outputs audio/webm;codecs=opus - Deepgram auto-detects WebM
     const params = new URLSearchParams({
       model: 'nova-3',
       language: 'en',
@@ -24,8 +25,6 @@ export class DeepgramClient {
       interim_results: 'true',
       utterance_end_ms: '1000',
       vad_events: 'true',
-      encoding: 'opus',
-      sample_rate: '48000',
     });
 
     this.ws = new WebSocket(

@@ -1,11 +1,20 @@
 import React, { useEffect, useCallback, useRef } from 'react';
-import { useTranscriptStore } from '../../stores/transcript-store';
+import { useTranscriptStore, setCurrentMeetingId } from '../../stores/transcript-store';
 import { useMeetingStore } from '../../stores/meeting-store';
 import { Transcript } from '../../components/Transcript';
 import { SuggestionCard } from '../../components/SuggestionCard';
 import { MeetingSetup } from '../../components/MeetingSetup';
 import { Settings } from '../../components/Settings';
 import { generateSuggestion, generateInterviewQuestion } from '../../lib/claude';
+import {
+  saveMeeting,
+  setInProgressMeeting,
+  getInProgressMeetingId,
+  getMeeting,
+  getTranscriptForMeeting,
+  getSuggestionsForMeeting,
+} from '../../lib/storage';
+import type { Meeting } from '../../types';
 
 type View = 'setup' | 'meeting' | 'summary' | 'settings';
 
@@ -52,7 +61,9 @@ export default function App() {
   const [view, setView] = React.useState<View>('setup');
   const [copyLabel, setCopyLabel] = React.useState('Copy Transcript');
   const [isGenerating, setIsGenerating] = React.useState(false);
-  const { isCapturing, setCapturing, segments, suggestions, clear: clearTranscript } =
+  const [recoveryPrompt, setRecoveryPrompt] = React.useState<Meeting | null>(null);
+  const [captureError, setCaptureError] = React.useState<string | null>(null);
+  const { isCapturing, setCapturing, segments, suggestions, clear: clearTranscript, restoreSegments, restoreSuggestions } =
     useTranscriptStore();
   const { currentMeeting, startMeeting, endMeeting, transcriptionSource, setTactiqAvailable, apiKeys, setApiKeys } = useMeetingStore();
   const suggestionRef = useRef<string | null>(null);
@@ -81,12 +92,78 @@ export default function App() {
       if (message.type === 'TACTIQ_AVAILABLE') {
         setTactiqAvailable(message.available);
       }
+      if (message.type === 'CAPTURE_ERROR') {
+        setCaptureError(message.error);
+        setCapturing(false);
+      }
     };
     chrome.runtime.sendMessage({ type: 'GET_TACTIQ_STATUS' }, (resp) => {
       if (resp?.available) setTactiqAvailable(true);
     });
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
+  }, []);
+
+  // Check for in-progress meeting on mount (crash recovery)
+  useEffect(() => {
+    async function checkForRecovery() {
+      try {
+        const inProgressId = await getInProgressMeetingId();
+        if (!inProgressId) return;
+
+        const meeting = await getMeeting(inProgressId);
+        if (!meeting) {
+          // Stale ID, clear it
+          await setInProgressMeeting(null);
+          return;
+        }
+
+        // If meeting has endTime, it was properly ended
+        if (meeting.endTime) {
+          await setInProgressMeeting(null);
+          return;
+        }
+
+        // Found an in-progress meeting - show recovery prompt
+        setRecoveryPrompt(meeting);
+      } catch (err) {
+        console.error('[MeetingMind] Recovery check failed:', err);
+      }
+    }
+
+    checkForRecovery();
+  }, []);
+
+  // Handle recovery action
+  const handleRecover = useCallback(async () => {
+    if (!recoveryPrompt) return;
+
+    try {
+      // Restore segments and suggestions from IndexedDB
+      const [segments, suggestions] = await Promise.all([
+        getTranscriptForMeeting(recoveryPrompt.id),
+        getSuggestionsForMeeting(recoveryPrompt.id),
+      ]);
+
+      // Restore store state
+      restoreSegments(segments);
+      restoreSuggestions(suggestions);
+      setCurrentMeetingId(recoveryPrompt.id);
+
+      // Restore meeting in meeting store
+      useMeetingStore.setState({ currentMeeting: recoveryPrompt });
+
+      setRecoveryPrompt(null);
+      setView('meeting');
+    } catch (err) {
+      console.error('[MeetingMind] Recovery failed:', err);
+      setRecoveryPrompt(null);
+    }
+  }, [recoveryPrompt, restoreSegments, restoreSuggestions]);
+
+  const handleDiscardRecovery = useCallback(async () => {
+    await setInProgressMeeting(null);
+    setRecoveryPrompt(null);
   }, []);
 
   // --- Mock Interview: auto-trigger on new speech ---
@@ -322,8 +399,17 @@ export default function App() {
     async (title: string) => {
       const mode = useMeetingStore.getState().mode;
       useMeetingStore.getState().clearMockHistory();
+      setCaptureError(null);
       startMeeting(title);
       setView('meeting');
+
+      // Get the meeting that was just created and persist it
+      const meeting = useMeetingStore.getState().currentMeeting;
+      if (meeting) {
+        setCurrentMeetingId(meeting.id);
+        await saveMeeting(meeting);
+        await setInProgressMeeting(meeting.id);
+      }
 
       const [tab] = await chrome.tabs.query({
         active: true,
@@ -342,15 +428,26 @@ export default function App() {
     [startMeeting, handleMockQuestion]
   );
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' });
     endMeeting();
+
+    // Save final meeting state and clear in-progress flag
+    const meeting = useMeetingStore.getState().currentMeeting;
+    if (meeting) {
+      await saveMeeting(meeting);
+    }
+    await setInProgressMeeting(null);
+    setCurrentMeetingId(null);
+
     setView('summary');
   }, [endMeeting]);
 
-  const handleNewMeeting = useCallback(() => {
+  const handleNewMeeting = useCallback(async () => {
     clearTranscript();
     useMeetingStore.getState().clearMockHistory();
+    await setInProgressMeeting(null);
+    setCurrentMeetingId(null);
     setView('setup');
     setCopyLabel('Copy Transcript');
   }, [clearTranscript]);
@@ -458,17 +555,54 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Recovery prompt */}
+        {recoveryPrompt && (
+          <div className="absolute inset-0 bg-gray-950/95 z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-sm">
+              <h2 className="text-lg font-semibold mb-2">Recover Meeting?</h2>
+              <p className="text-sm text-gray-400 mb-4">
+                Found an interrupted meeting: <strong className="text-gray-200">{recoveryPrompt.title}</strong>
+                <br />
+                <span className="text-xs">
+                  Started {new Date(recoveryPrompt.startTime).toLocaleString()}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRecover}
+                  className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                >
+                  Recover
+                </button>
+                <button
+                  onClick={handleDiscardRecovery}
+                  className="flex-1 px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {view === 'settings' && <Settings onBack={() => setView('setup')} />}
         {view === 'setup' && <MeetingSetup onStart={handleStart} />}
         {view === 'meeting' && (
           <>
+            {/* Capture error banner */}
+            {captureError && (
+              <div className="px-4 py-2 bg-red-900/50 border-b border-red-800 text-sm text-red-200">
+                {captureError}
+              </div>
+            )}
+
             {/* Status bar */}
             <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-2 text-sm">
               <span
-                className={`w-2 h-2 rounded-full ${isCapturing ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`}
+                className={`w-2 h-2 rounded-full ${isCapturing ? 'bg-green-500 animate-pulse' : captureError ? 'bg-red-500' : 'bg-gray-600'}`}
               />
               <span className="text-gray-400">
-                {isCapturing ? 'Recording' : 'Not recording'}
+                {isCapturing ? 'Recording' : captureError ? 'Capture failed' : 'Not recording'}
               </span>
               {isCapturing && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">

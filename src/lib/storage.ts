@@ -71,6 +71,54 @@ export async function getTranscriptForMeeting(
   });
 }
 
+// Track in-progress meeting for crash recovery
+const IN_PROGRESS_KEY = 'meetingmind_in_progress';
+
+export async function setInProgressMeeting(meetingId: string | null) {
+  if (meetingId) {
+    await chrome.storage.local.set({ [IN_PROGRESS_KEY]: meetingId });
+  } else {
+    await chrome.storage.local.remove(IN_PROGRESS_KEY);
+  }
+}
+
+export async function getInProgressMeetingId(): Promise<string | null> {
+  const result = await chrome.storage.local.get(IN_PROGRESS_KEY);
+  const meetingId = result[IN_PROGRESS_KEY];
+  return typeof meetingId === 'string' ? meetingId : null;
+}
+
+export async function getMeeting(meetingId: string): Promise<Meeting | null> {
+  const db = await openDB();
+  const tx = db.transaction('meetings', 'readonly');
+  const request = tx.objectStore('meetings').get(meetingId);
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveSuggestion(meetingId: string, suggestion: Suggestion) {
+  const db = await openDB();
+  const tx = db.transaction('suggestions', 'readwrite');
+  tx.objectStore('suggestions').put({ ...suggestion, meetingId });
+  return new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getSuggestionsForMeeting(meetingId: string): Promise<Suggestion[]> {
+  const db = await openDB();
+  const tx = db.transaction('suggestions', 'readonly');
+  const index = tx.objectStore('suggestions').index('meetingId');
+  const request = index.getAll(meetingId);
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export function exportToMarkdown(
   meeting: Meeting,
   segments: TranscriptSegment[],

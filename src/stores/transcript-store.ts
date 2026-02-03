@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import type { TranscriptSegment, Suggestion } from '../types';
+import { saveTranscriptSegment, saveSuggestion } from '../lib/storage';
+
+// Current meeting ID for persistence (set by App.tsx)
+let currentMeetingId: string | null = null;
+
+export function setCurrentMeetingId(id: string | null) {
+  currentMeetingId = id;
+}
 
 interface TranscriptState {
   segments: TranscriptSegment[];
@@ -16,6 +24,9 @@ interface TranscriptState {
   setCapturing: (active: boolean) => void;
   setSpeakerLabel: (speakerId: number, label: string) => void;
   clear: () => void;
+  // Recovery functions
+  restoreSegments: (segments: TranscriptSegment[]) => void;
+  restoreSuggestions: (suggestions: Suggestion[]) => void;
 }
 
 export const useTranscriptStore = create<TranscriptState>((set) => ({
@@ -26,6 +37,10 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
 
   addSegment: (segment) =>
     set((state) => {
+      // Persist to IndexedDB if we have a meeting ID
+      if (currentMeetingId) {
+        saveTranscriptSegment(currentMeetingId, segment).catch(console.error);
+      }
       // Upsert: if segment with same ID exists, update it (Tactiq in-place edits)
       const idx = state.segments.findIndex((s) => s.id === segment.id);
       if (idx >= 0) {
@@ -44,7 +59,13 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
     })),
 
   addSuggestion: (suggestion) =>
-    set((state) => ({ suggestions: [suggestion, ...state.suggestions] })),
+    set((state) => {
+      // Persist to IndexedDB if we have a meeting ID
+      if (currentMeetingId) {
+        saveSuggestion(currentMeetingId, suggestion).catch(console.error);
+      }
+      return { suggestions: [suggestion, ...state.suggestions] };
+    }),
 
   updateSuggestionText: (id, text) =>
     set((state) => ({
@@ -74,5 +95,9 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       speakers: { ...state.speakers, [speakerId]: label },
     })),
 
-  clear: () => set({ segments: [], suggestions: [] }),
+  clear: () => set({ segments: [], suggestions: [], speakers: {} }),
+
+  // Recovery functions
+  restoreSegments: (segments) => set({ segments }),
+  restoreSuggestions: (suggestions) => set({ suggestions }),
 }));
