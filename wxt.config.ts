@@ -18,6 +18,7 @@ export default defineConfig({
       'storage',
       'activeTab',
     ],
+    host_permissions: ['https://api.deepgram.com/*'],
     action: {},
   },
 });

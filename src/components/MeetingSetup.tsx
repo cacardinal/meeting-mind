@@ -4,6 +4,7 @@ import type { MeetingMode, ContextDoc, TranscriptionSource } from '../types';
 
 interface Props {
   onStart: (title: string) => void;
+  onImport: (title: string) => void;
 }
 
 const MODES: { value: MeetingMode; label: string; description: string }[] = [
@@ -34,10 +35,11 @@ const MODES: { value: MeetingMode; label: string; description: string }[] = [
   },
 ];
 
-export function MeetingSetup({ onStart }: Props) {
+export function MeetingSetup({ onStart, onImport }: Props) {
   const [title, setTitle] = useState('');
   const [contextText, setContextText] = useState('');
-  const { mode, setMode, addContextDoc, contextDocs, removeContextDoc, transcriptionSource, setTranscriptionSource, tactiqAvailable, apiKeys } =
+  const [tab, setTab] = useState<'live' | 'import'>('live');
+  const { mode, setMode, addContextDoc, contextDocs, removeContextDoc, transcriptionSource, setTranscriptionSource, tactiqAvailable, apiKeys, importFile, setImportFile } =
     useMeetingStore();
 
   const handleAddContext = () => {
@@ -66,8 +68,38 @@ export function MeetingSetup({ onStart }: Props) {
     e.target.value = '';
   };
 
+  const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setImportFile(file);
+    e.target.value = '';
+  };
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+      {/* Tab selector */}
+      <div className="flex border-b border-gray-700">
+        <button
+          onClick={() => setTab('live')}
+          className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+            tab === 'live'
+              ? 'text-blue-400 border-b-2 border-blue-400'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Live Meeting
+        </button>
+        <button
+          onClick={() => setTab('import')}
+          className={`flex-1 pb-2 text-sm font-medium transition-colors ${
+            tab === 'import'
+              ? 'text-blue-400 border-b-2 border-blue-400'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Import Recording
+        </button>
+      </div>
+
       {/* Meeting title */}
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-1.5">
@@ -107,50 +139,95 @@ export function MeetingSetup({ onStart }: Props) {
         </div>
       </div>
 
-      {/* Transcription source */}
-      <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">
-          Transcription Source
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setTranscriptionSource('tactiq')}
-            className={`p-2.5 rounded-md border text-left transition-colors ${
-              transcriptionSource === 'tactiq'
-                ? 'border-blue-500 bg-blue-950/40'
-                : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-            }`}
-          >
-            <div className="text-sm font-medium flex items-center gap-1.5">
-              Tactiq
-              {tactiqAvailable && (
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              )}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {tactiqAvailable ? 'Detected — ready' : 'Not detected'}
-            </div>
-          </button>
-          <button
-            onClick={() => setTranscriptionSource('deepgram')}
-            className={`p-2.5 rounded-md border text-left transition-colors ${
-              transcriptionSource === 'deepgram'
-                ? 'border-blue-500 bg-blue-950/40'
-                : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-            }`}
-          >
-            <div className="text-sm font-medium">Deepgram</div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {apiKeys.deepgram ? 'API key set' : 'Requires API key'}
-            </div>
-          </button>
+      {/* Transcription source (live only) */}
+      {tab === 'live' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">
+            Transcription Source
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setTranscriptionSource('tactiq')}
+              className={`p-2.5 rounded-md border text-left transition-colors ${
+                transcriptionSource === 'tactiq'
+                  ? 'border-blue-500 bg-blue-950/40'
+                  : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+              }`}
+            >
+              <div className="text-sm font-medium flex items-center gap-1.5">
+                Tactiq
+                {tactiqAvailable && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                )}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {tactiqAvailable ? 'Detected — ready' : 'Not detected'}
+              </div>
+            </button>
+            <button
+              onClick={() => setTranscriptionSource('deepgram')}
+              className={`p-2.5 rounded-md border text-left transition-colors ${
+                transcriptionSource === 'deepgram'
+                  ? 'border-blue-500 bg-blue-950/40'
+                  : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+              }`}
+            >
+              <div className="text-sm font-medium">Deepgram</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {apiKeys.deepgram ? 'API key set' : 'Requires API key'}
+              </div>
+            </button>
+          </div>
+          {transcriptionSource === 'deepgram' && !apiKeys.deepgram && (
+            <p className="text-xs text-amber-500 mt-1.5">
+              Set a Deepgram API key in Settings first.
+            </p>
+          )}
         </div>
-        {transcriptionSource === 'deepgram' && !apiKeys.deepgram && (
-          <p className="text-xs text-amber-500 mt-1.5">
-            Set a Deepgram API key in Settings first.
-          </p>
-        )}
-      </div>
+      )}
+
+      {/* Audio file picker (import only) */}
+      {tab === 'import' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">
+            Audio / Video File
+          </label>
+          {importFile ? (
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-900 rounded-md border border-gray-700">
+              <div className="min-w-0">
+                <span className="text-sm text-gray-300 truncate block">{importFile.name}</span>
+                <span className="text-xs text-gray-500">
+                  {(importFile.size / (1024 * 1024)).toFixed(1)} MB
+                </span>
+              </div>
+              <button
+                onClick={() => setImportFile(null)}
+                className="text-gray-500 hover:text-red-400 text-xs ml-2 shrink-0"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <label className="flex items-center justify-center px-3 py-6 bg-gray-900 border border-gray-700 border-dashed rounded-md cursor-pointer hover:border-gray-500 transition-colors">
+              <div className="text-center">
+                <div className="text-sm text-gray-400">Click to select a file</div>
+                <div className="text-xs text-gray-600 mt-1">MP4, WebM, WAV, MP3, M4A</div>
+              </div>
+              <input
+                type="file"
+                accept="audio/*,video/*,.mp4,.webm,.wav,.mp3,.m4a"
+                onChange={handleAudioFileSelect}
+                className="hidden"
+              />
+            </label>
+          )}
+          {!apiKeys.deepgram && (
+            <p className="text-xs text-amber-500 mt-1.5">
+              Set a Deepgram API key in Settings first.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Context docs */}
       <div>
@@ -207,13 +284,23 @@ export function MeetingSetup({ onStart }: Props) {
         </div>
       </div>
 
-      {/* Start button */}
-      <button
-        onClick={() => onStart(title || 'Untitled Meeting')}
-        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-sm font-medium rounded-md transition-colors"
-      >
-        Start Meeting
-      </button>
+      {/* Start / Import button */}
+      {tab === 'live' ? (
+        <button
+          onClick={() => onStart(title || 'Untitled Meeting')}
+          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-sm font-medium rounded-md transition-colors"
+        >
+          Start Meeting
+        </button>
+      ) : (
+        <button
+          onClick={() => onImport(title || 'Imported Recording')}
+          disabled={!importFile || !apiKeys.deepgram}
+          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium rounded-md transition-colors"
+        >
+          Transcribe Recording
+        </button>
+      )}
     </div>
   );
 }

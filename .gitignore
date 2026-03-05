@@ -3,3 +3,9 @@ node_modules/
 .wxt/
 dist/
 *.log
+
+# Native build artifacts
+native/*/.build/
+native/*/xcuserdata/
+*.xcuserstate
+*.pcm

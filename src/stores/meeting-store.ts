@@ -10,18 +10,21 @@ interface MeetingState {
   transcriptionSource: TranscriptionSource;
   tactiqAvailable: boolean;
   mockHistory: MockQA[];
+  importFile: File | null;
 
   setMode: (mode: MeetingMode) => void;
   addContextDoc: (doc: ContextDoc) => void;
   removeContextDoc: (id: string) => void;
   setFrameworks: (frameworks: string[]) => void;
   startMeeting: (title: string) => void;
+  startImportedMeeting: (title: string) => void;
   endMeeting: () => void;
   setApiKeys: (keys: Partial<MeetingState['apiKeys']>) => void;
   setTranscriptionSource: (source: TranscriptionSource) => void;
   setTactiqAvailable: (available: boolean) => void;
   addMockQA: (qa: MockQA) => void;
   clearMockHistory: () => void;
+  setImportFile: (file: File | null) => void;
 }
 
 export const useMeetingStore = create<MeetingState>((set, get) => ({
@@ -33,6 +36,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   transcriptionSource: 'tactiq',
   tactiqAvailable: false,
   mockHistory: [],
+  importFile: null,
 
   setMode: (mode) => set({ mode }),
 
@@ -75,4 +79,19 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   setTactiqAvailable: (available) => set({ tactiqAvailable: available }),
   addMockQA: (qa) => set((state) => ({ mockHistory: [...state.mockHistory, qa] })),
   clearMockHistory: () => set({ mockHistory: [] }),
+  setImportFile: (file) => set({ importFile: file }),
+
+  startImportedMeeting: (title) =>
+    set((state) => ({
+      currentMeeting: {
+        id: crypto.randomUUID(),
+        title,
+        mode: state.mode,
+        startTime: Date.now(),
+        speakers: {},
+        contextDocs: state.contextDocs,
+        frameworks: state.frameworks,
+        isImported: true,
+      },
+    })),
 }));

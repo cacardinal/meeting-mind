@@ -19,6 +19,7 @@ export interface Meeting {
   speakers: Record<number, string>;
   contextDocs: ContextDoc[];
   frameworks: string[];
+  isImported?: boolean;
 }
 
 export type MeetingMode = 'interview' | 'parent-teacher' | 'financial' | 'general' | 'mock-interview';
@@ -57,4 +58,8 @@ export type MessageType =
   | { type: 'TACTIQ_AVAILABLE'; available: boolean }
   | { type: 'START_TACTIQ' }
   | { type: 'STOP_TACTIQ' }
+  | { type: 'TRANSCRIBE_FILE'; fileData: number[]; apiKey: string }
+  | { type: 'TRANSCRIBE_FILE_RESULT'; segments: TranscriptSegment[] }
+  | { type: 'TRANSCRIBE_FILE_ERROR'; error: string }
+  | { type: 'TRANSCRIBE_FILE_PROGRESS'; status: string }
   | { type: 'POP_OUT' };

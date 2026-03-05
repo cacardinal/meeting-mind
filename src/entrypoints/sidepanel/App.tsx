@@ -14,9 +14,10 @@ import {
   getTranscriptForMeeting,
   getSuggestionsForMeeting,
 } from '../../lib/storage';
+import { transcribeFile } from '../../lib/deepgram-batch';
 import type { Meeting } from '../../types';
 
-type View = 'setup' | 'meeting' | 'summary' | 'settings';
+type View = 'setup' | 'meeting' | 'summary' | 'settings' | 'importing';
 
 function formatDuration(startTime: number, endTime?: number): string {
   const ms = (endTime || Date.now()) - startTime;
@@ -63,6 +64,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [recoveryPrompt, setRecoveryPrompt] = React.useState<Meeting | null>(null);
   const [captureError, setCaptureError] = React.useState<string | null>(null);
+  const [importStatus, setImportStatus] = React.useState<string | null>(null);
   const { isCapturing, setCapturing, segments, suggestions, clear: clearTranscript, restoreSegments, restoreSuggestions } =
     useTranscriptStore();
   const { currentMeeting, startMeeting, endMeeting, transcriptionSource, setTactiqAvailable, apiKeys, setApiKeys } = useMeetingStore();
@@ -428,6 +430,48 @@ export default function App() {
     [startMeeting, handleMockQuestion]
   );
 
+  const handleImport = useCallback(
+    async (title: string) => {
+      const { importFile, apiKeys, startImportedMeeting } = useMeetingStore.getState();
+      if (!importFile || !apiKeys.deepgram) return;
+
+      clearTranscript();
+      startImportedMeeting(title);
+      setImportStatus('Reading file...');
+      setView('importing');
+
+      const meeting = useMeetingStore.getState().currentMeeting;
+      if (meeting) {
+        setCurrentMeetingId(meeting.id);
+        await saveMeeting(meeting);
+      }
+
+      try {
+        const buffer = await importFile.arrayBuffer();
+        const segments = await transcribeFile(buffer, apiKeys.deepgram, (status) => {
+          setImportStatus(status);
+        });
+
+        const store = useTranscriptStore.getState();
+        for (const seg of segments) {
+          store.addSegment(seg);
+        }
+
+        useMeetingStore.getState().endMeeting();
+        const updatedMeeting = useMeetingStore.getState().currentMeeting;
+        if (updatedMeeting) {
+          await saveMeeting(updatedMeeting);
+        }
+
+        setImportStatus(null);
+        setView('summary');
+      } catch (err) {
+        setImportStatus(`Error: ${err instanceof Error ? err.message : 'Transcription failed'}`);
+      }
+    },
+    [clearTranscript]
+  );
+
   const handleStop = useCallback(async () => {
     chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' });
     endMeeting();
@@ -586,7 +630,7 @@ export default function App() {
         )}
 
         {view === 'settings' && <Settings onBack={() => setView('setup')} />}
-        {view === 'setup' && <MeetingSetup onStart={handleStart} />}
+        {view === 'setup' && <MeetingSetup onStart={handleStart} onImport={handleImport} />}
         {view === 'meeting' && (
           <>
             {/* Capture error banner */}
@@ -665,6 +709,25 @@ export default function App() {
               )}
             </div>
           </>
+        )}
+        {view === 'importing' && (
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-sm text-gray-300 mb-1">Transcribing recording...</p>
+            {importStatus && (
+              <p className={`text-xs ${importStatus.startsWith('Error') ? 'text-red-400' : 'text-gray-500'}`}>
+                {importStatus}
+              </p>
+            )}
+            {importStatus?.startsWith('Error') && (
+              <button
+                onClick={() => { setImportStatus(null); setView('setup'); }}
+                className="mt-4 px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-md transition-colors"
+              >
+                Back to Setup
+              </button>
+            )}
+          </div>
         )}
         {view === 'summary' && (
           <>

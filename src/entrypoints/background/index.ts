@@ -28,6 +28,31 @@ export default defineBackground(() => {
     offscreenDocCreated = true;
   }
 
+  // Handle file transcription via Deepgram REST API
+  async function handleTranscribeFile(fileData: number[], apiKey: string) {
+    try {
+      const { transcribeFile } = await import('../../lib/deepgram-batch');
+      const buffer = new Uint8Array(fileData).buffer;
+
+      const segments = await transcribeFile(buffer, apiKey, (status) => {
+        chrome.runtime.sendMessage({
+          type: 'TRANSCRIBE_FILE_PROGRESS',
+          status,
+        }).catch(() => {});
+      });
+
+      chrome.runtime.sendMessage({
+        type: 'TRANSCRIBE_FILE_RESULT',
+        segments,
+      }).catch(() => {});
+    } catch (err) {
+      chrome.runtime.sendMessage({
+        type: 'TRANSCRIBE_FILE_ERROR',
+        error: err instanceof Error ? err.message : 'Transcription failed',
+      }).catch(() => {});
+    }
+  }
+
   // Listen for messages from side panel, content scripts, and offscreen
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'TACTIQ_AVAILABLE') {
@@ -70,6 +95,9 @@ export default defineBackground(() => {
         width: 420,
         height: 700,
       });
+      sendResponse({ ok: true });
+    } else if (message.type === 'TRANSCRIBE_FILE') {
+      handleTranscribeFile(message.fileData, message.apiKey);
       sendResponse({ ok: true });
     } else if (message.type === 'TRANSCRIPT') {
       console.log('[MeetingMind BG] TRANSCRIPT segment from', message.segment?.speakerLabel);
