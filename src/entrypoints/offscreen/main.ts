@@ -14,10 +14,11 @@ chrome.runtime.onMessage.addListener((message) => {
 
 async function startCapture(streamId: string) {
   try {
+    // desktopCapture uses 'desktop' as the media source
     audioStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
-          chromeMediaSource: 'tab',
+          chromeMediaSource: 'desktop',
           chromeMediaSourceId: streamId,
         },
       } as any,

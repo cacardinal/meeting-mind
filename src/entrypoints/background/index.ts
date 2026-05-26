@@ -1,3 +1,6 @@
+import { DeepgramClient } from '../../lib/deepgram';
+import type { TranscriptSegment } from '../../types';
+
 export default defineBackground(() => {
   // Open side panel when extension icon is clicked
   browser.sidePanel
@@ -7,6 +10,7 @@ export default defineBackground(() => {
   let offscreenDocCreated = false;
   let tactiqAvailable = false;
   let activeSource: 'tactiq' | 'deepgram' | null = null;
+  let deepgramClient: DeepgramClient | null = null;
 
   async function ensureOffscreenDocument() {
     if (offscreenDocCreated) return;
@@ -82,6 +86,11 @@ export default defineBackground(() => {
           }
         });
       } else {
+        // Stop Deepgram client
+        if (deepgramClient) {
+          deepgramClient.disconnect();
+          deepgramClient = null;
+        }
         chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' });
       }
       activeSource = null;
@@ -98,6 +107,12 @@ export default defineBackground(() => {
       sendResponse({ ok: true });
     } else if (message.type === 'TRANSCRIBE_FILE') {
       handleTranscribeFile(message.fileData, message.apiKey);
+      sendResponse({ ok: true });
+    } else if (message.type === 'AUDIO_DATA') {
+      if (deepgramClient && message.data) {
+        const audioData = new Uint8Array(message.data);
+        deepgramClient.sendAudio(audioData);
+      }
       sendResponse({ ok: true });
     } else if (message.type === 'TRANSCRIPT') {
       console.log('[MeetingMind BG] TRANSCRIPT segment from', message.segment?.speakerLabel);
@@ -123,14 +138,66 @@ export default defineBackground(() => {
 
   async function handleStartDeepgram(tabId: number) {
     activeSource = 'deepgram';
+
+    // Get Deepgram API key from storage
+    const result = await chrome.storage.local.get('apiKeys');
+    const apiKeys = result.apiKeys as { deepgram?: string; anthropic?: string } | undefined;
+    const deepgramApiKey = apiKeys?.deepgram;
+
+    if (!deepgramApiKey) {
+      console.error('[MeetingMind] No Deepgram API key configured');
+      chrome.runtime.sendMessage({ type: 'CAPTURE_STATUS', active: false }).catch(() => {});
+      return;
+    }
+
+    // Initialize Deepgram client
+    deepgramClient = new DeepgramClient(deepgramApiKey, (segment: TranscriptSegment) => {
+      // Forward transcript segments to side panel
+      chrome.runtime.sendMessage({ type: 'TRANSCRIPT', segment }).catch(() => {});
+    });
+    deepgramClient.connect();
+
     await ensureOffscreenDocument();
 
-    // Get a MediaStream ID for the tab
-    const streamId = await new Promise<string>((resolve) => {
-      chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (id) => {
-        resolve(id);
-      });
+    // Get the tab object for desktopCapture (required when calling from service worker)
+    const tab = await chrome.tabs.get(tabId);
+
+    // Use desktopCapture API - shows a picker dialog for the user to select the tab
+    const streamId = await new Promise<string | null>((resolve) => {
+      // When called from service worker, must pass tab as second argument
+      chrome.desktopCapture.chooseDesktopMedia(
+        ['tab', 'audio'],
+        tab,
+        (id) => {
+          if (chrome.runtime.lastError) {
+            console.error('[MeetingMind] Desktop capture failed:', chrome.runtime.lastError.message);
+            resolve(null);
+          } else if (!id) {
+            console.error('[MeetingMind] User cancelled capture dialog');
+            resolve(null);
+          } else {
+            console.log('[MeetingMind] Desktop capture approved, streamId:', id);
+            resolve(id);
+          }
+        }
+      );
     });
+
+    if (!streamId) {
+      console.error('[MeetingMind] Failed to get stream ID - capture not started');
+      chrome.runtime.sendMessage({
+        type: 'CAPTURE_ERROR',
+        error: 'Capture cancelled or failed. Click Start again and select the tab with your meeting.'
+      }).catch(() => {});
+      if (deepgramClient) {
+        deepgramClient.disconnect();
+        deepgramClient = null;
+      }
+      activeSource = null;
+      return;
+    }
+
+    console.log('[MeetingMind] Got stream ID, sending to offscreen');
 
     // Send the stream ID to the offscreen document for capture
     chrome.runtime.sendMessage({

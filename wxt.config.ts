@@ -12,13 +12,14 @@ export default defineConfig({
     description: 'Real-time meeting assistant with transcription and AI suggestions',
     version: '0.1.0',
     permissions: [
-      'tabCapture',
+      'desktopCapture',
       'offscreen',
       'sidePanel',
       'storage',
-      'activeTab',
+      'tabs',
     ],
-    host_permissions: ['https://api.deepgram.com/*'],
+    // <all_urls> for tab capture; api.deepgram.com is covered by it
+    host_permissions: ['<all_urls>', 'https://api.deepgram.com/*'],
     action: {},
   },
 });
