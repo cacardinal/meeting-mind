@@ -2,6 +2,10 @@
 
 Real-time meeting assistant Chrome extension. Transcribes conversations on Google Meet, Zoom, and Microsoft Teams, providing AI-powered suggestions using loaded context.
 
+## Status
+
+Under active development (work in progress). The Chrome extension is the primary product; `native/` contains an experimental macOS Swift proof-of-concept.
+
 ## Quick Start
 
 1. Install dependencies: `npm install`
@@ -117,8 +121,6 @@ tabCapture → Offscreen document captures audio
   → Side panel displays
 ```
 
-## Life-OS Integration
+## Project Notes
 
-This is a code-heavy domain in [Life-OS](https://github.com/cacardinal/life-os). Symlinked at `domains/meetings/code/`.
-
-Exported transcripts save to `domains/meetings/transcripts/YYYY-MM-DD-[name].md`.
+This project is under active development — expect rough edges and rapid iteration. Exported transcripts are saved as Markdown files (`YYYY-MM-DD-[name].md`).

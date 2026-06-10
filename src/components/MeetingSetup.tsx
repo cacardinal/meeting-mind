@@ -109,7 +109,7 @@ export function MeetingSetup({ onStart, onImport }: Props) {
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="e.g. Virta Health — Karthik Interview"
+          placeholder="e.g. Acme Health — Final Round Interview"
           className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-blue-500"
         />
       </div>

@@ -9,7 +9,7 @@ import type { TranscriptSegment } from '../types';
  *   <div class="...overflow-y-auto...">           ← scrollable transcript container
  *     <div class="flex flex-col px-2.5 py-0">    ← entry wrapper
  *       <div class="pt-2.5 ... text-[#6dcc6d]">  ← speaker name (green text)
- *         Chris Cardinal
+ *         Jane Doe
  *       </div>
  *       <div class="group flex flex-row ... text-[#dcddde]">  ← text row
  *         <div class="flex-1 break-words ... font-medium">    ← actual text
