@@ -2,11 +2,7 @@
 
 Real-time meeting assistant Chrome extension (WXT + React + TypeScript). Transcribes Google Meet / Zoom / Teams calls and surfaces AI suggestions from loaded context. See README.md for full platform/transcription-source docs.
 
-## Life-OS Integration
-
-This repo is the code half of the Life-OS **meetings domain** (other-worlds pattern): the real directory is `~/Code/life-os/domains/meetings/code/`, with a compatibility symlink at `~/Code/meeting-mind`. It is its own git repo (remote: `cacardinal/meeting-mind`), gitignored by life-os. Domain context, transcripts, and meeting workflows live in `~/Code/life-os/domains/meetings/` — read that CLAUDE.md for non-code meeting work.
-
-**Project status:** ~60% complete; was paused for Parsant priority, resumed June 2026 (e2e test results in `test/e2e-results-*.md`).
+**Project status:** paused; core transcription + suggestion pipeline works (e2e test results in `test/e2e-results-*.md`).
 
 ## Architecture
 
